@@ -9,175 +9,163 @@
 #include <vector>
 #include <algorithm>
 
-#include "A_10.h";
-#include "b_10.h";
+#include "A_10.h"
+#include "b_10.h"
+#include "A_32.h"
+#include "b_32.h"
+#include "A_512.h"
+#include "b_512.h"
+#include "A_1024.h"
+#include "b_1024.h"
 
-#define N 10
+#define MAX_N 2048
+#define N 512
 
 using namespace std;
 
 constexpr auto MAX_NUMBER_THREADS = 1024;
 
-cudaError_t solveMatrixWithCuda(float* matrixA, float* vectorB, int dimension, int numOfThreads);
+cudaError_t solveMatrixWithCuda(int numOfThreads);
+void PrintMatrix(double ar[][MAX_N], int n, int m);
+void PrintInverse(double ar[][MAX_N], int n, int m);
+void InverseOfMatrix(double matrix[][MAX_N], int order);
 
-//__global void solveMatrixKernel(float** inverseMatrix, float** vector, int dimension, int numOfThreads) 
-//{
-//	
-//
-//}
-
-// Function to get cofactor of A[p][q] in temp[][]. n is current 
-// dimension of A[][] 
-void getCofactor(float matrix[N][N], float temp[N][N], int p, int q, int n)
+__global__ void solveMatrixKernel(double* inverseA, double* vecB, double* VecSolx, int dimension, int numOfThreads)
 {
-	int i = 0, j = 0;
+	for (int i = 0; i < dimension/numOfThreads; i++) {
+		int j = (threadIdx.x + numOfThreads * i) + (blockIdx.x * numOfThreads);
+		int k = dimension * j;
 
-	// Looping for each element of the matrix 
-	for (int row = 0; row < n; row++)
-	{
-		for (int col = 0; col < n; col++)
-		{
-			//  Copying into temporary matrix only those element 
-			//  which are not in given row and column 
-			if (row != p && col != q)
-			{
-				temp[i][j++] = matrix[row][col];
+		for (int z = 0; z < N; z++) {
+			VecSolx[j] += inverseA[k + z] * vecB[z];
+		}
+		printf("%.3f \n", VecSolx[j]);
+	}
+}
 
-				// Row is filled, so increase row index and 
-				// reset col index 
-				if (j == n - 1)
-				{
-					j = 0;
-					i++;
+// Function to Print matrix. 
+void PrintMatrix(double ar[][MAX_N], int n, int m)
+{
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < m; j++) {
+			cout << ar[i][j] << " ";
+		}
+		printf("\n");
+	}
+	return;
+}
+
+// Function to Print inverse matrix 
+void PrintInverse(double ar[][MAX_N], int n, int m)
+{
+	for (int i = 0; i < n; i++) {
+		for (int j = n; j < m; j++) {
+			printf("%.3f ", ar[i][j]);
+		}
+		printf("\n");
+	}
+	return;
+}
+
+// Function to perform the inverse operation on the matrix. 
+void InverseOfMatrix(double matrix[][MAX_N], int order)
+{
+	// Matrix Declaration. 
+
+	double temp;
+
+	// PrintMatrix function to print the element 
+	// of the matrix. 
+	//printf("=== Matrix ===\n");
+	//PrintMatrix(matrix, order, order);
+
+	// Create the augmented matrix 
+	// Add the identity matrix 
+	// of order at the end of original matrix. 
+	for (int i = 0; i < order; i++) {
+
+		for (int j = 0; j < 2 * order; j++) {
+
+			// Add '1' at the diagonal places of 
+			// the matrix to create a identity matirx 
+			if (j == (i + order))
+				matrix[i][j] = 1;
+		}
+	}
+
+	// Interchange the row of matrix, 
+	// interchanging of row will start from the last row 
+	for (int i = order - 1; i > 0; i--) {
+
+		// Swapping each and every element of the two rows 
+		 if (matrix[i - 1][0] < matrix[i][0]) 
+		 for (int j = 0; j < 2 * order; j++) { 
+		 
+			 // Swapping of the row, if above 
+			 // condition satisfied. 
+			 temp = matrix[i][j]; 
+			 matrix[i][j] = matrix[i - 1][j]; 
+			 matrix[i - 1][j] = temp; 
+		 } 
+
+		// Directly swapping the rows using pointers saves time 
+
+		/*if (matrix[i - 1][0] < matrix[i][0]) {
+			float* temp = matrix[i];
+			matrix[i] = matrix[i - 1];
+			matrix[i - 1] = temp;
+		}*/
+	}
+
+	// Print matrix after interchange operations. 
+	//printf("\n=== Augmented Matrix ===\n");
+	//PrintMatrix(matrix, order, order * 2);
+
+	// Replace a row by sum of itself and a 
+	// constant multiple of another row of the matrix 
+	for (int i = 0; i < order; i++) {
+
+		for (int j = 0; j < order; j++) {
+
+			if (j != i) {
+
+				temp = matrix[j][i] / matrix[i][i];
+				for (int k = 0; k < 2 * order; k++) {
+
+					matrix[j][k] -= matrix[i][k] * temp;
 				}
 			}
 		}
 	}
-}
 
-/* Recursive function for finding determinant of matrix.
-   n is current dimension of A[][]. */
-int determinant(float matrix[N][N], int n)
-{
-	int D = 0; // Initialize result 
+	// Multiply each row by a nonzero integer. 
+	// Divide row element by the diagonal element 
+	for (int i = 0; i < order; i++) {
 
-	//  Base case : if matrix contains single element 
-	if (n == 1)
-		return matrix[0][0];
+		temp = matrix[i][i];
+		for (int j = 0; j < 2 * order; j++) {
 
-	float temp[N][N]; // To store cofactors 
-
-	int sign = 1;  // To store sign multiplier 
-
-	 // Iterate for each element of first row 
-	for (int f = 0; f < n; f++)
-	{
-		// Getting Cofactor of A[0][f] 
-		getCofactor(matrix, temp, 0, f, n);
-		D += sign * matrix[0][f] * determinant(temp, n - 1);
-
-		// terms are to be added with alternate sign 
-		sign = -sign;
-	}
-
-	return D;
-}
-
-// Function to get adjoint of A[N][N] in adj[N][N]. 
-void adjoint(float matrix[N][N], float adj[N][N])
-{
-	if (N == 1)
-	{
-		adj[0][0] = 1;
-		return;
-	}
-
-	// temp is used to store cofactors of A[][] 
-	int sign = 1; 
-	float temp[N][N];
-
-	for (int i = 0; i < N; i++)
-	{
-		for (int j = 0; j < N; j++)
-		{
-			// Get cofactor of A[i][j] 
-			getCofactor(matrix, temp, i, j, N);
-
-			// sign of adj[j][i] positive if sum of row 
-			// and column indexes is even. 
-			sign = ((i + j) % 2 == 0) ? 1 : -1;
-
-			// Interchanging rows and columns to get the transpose of the cofactor matrix 
-			adj[j][i] = (sign) * (determinant(temp, N - 1));
-		}
-	}
-}
-
-// Function to calculate and store inverse, returns false if 
-// matrix is singular 
-bool inverse(float matrix[N][N], float inverse[N][N])
-{
-	// Find determinant of A[][] 
-	int det = determinant(matrix, N);
-	if (det == 0)
-	{
-		cout << "Singular matrix, can't find its inverse";
-		return false;
-	}
-
-	// Find adjoint 
-	float adj[N][N];
-	adjoint(matrix, adj);
-
-	// Find Inverse using formula "inverse(A) = adj(A)/det(A)" 
-	for (int i = 0; i < N; i++) {
-		for (int j = 0; j < N; j++) {
-			inverse[i][j] = adj[i][j] / float(det);
+			matrix[i][j] = matrix[i][j] / temp;
 		}
 	}
 
-	return true;
-}
- 
-void display(float matrix[N][N])
-{
-	for (int i = 0; i < N; i++) {
-		cout << "{ ";
-		for (int j = 0; j < N; j++) {
-			cout << matrix[i][j] << ", ";
-		}
-		cout << " }" << endl;
-	}
+	// print the resultant Inverse matrix. 
+	//printf("\n=== Inverse Matrix ===\n");
+	//PrintInverse(matrix, order, 2 * order);
+
+	return;
 }
 
 
 int main(int argc, char* argv[])
 {
 	int numOfThreads = 10;
-	int dimension = 10;
 
-	float adj[N][N] = { 0 };  // To store adjoint of A[][] 
+	//cout << "\nDimension of A = " << N;
+	cout << "\nNumber of Threads = \n" << numOfThreads;
 
-	float inv[N][N] = { 0 }; // To store inverse of A[][] 
+	solveMatrixWithCuda(numOfThreads);
 	
-	//cudaError_t status = adjointWithCuda(numOfThreads, &InputMatrix);
-
-	cout << "\nDimension of A = " << N;
-	cout << "\nNumber of Threads = " << numOfThreads;
-
-	cout << "\nMatrix A =\n";
-	display(A_10);
-
-	cout << "\nThe Adjoint of A=\n";
-	adjoint(A_10, adj);
-	display(adj);
-
-	cout << "\nThe Inverse of A=\n";
-	if (inverse(A_10, inv))
-		display(inv);
-
-	cout << "\nx = Inverse of A * b = ";
-
 	return 0;
 
 	//if (argc != 5 || argv[1] == NULL || argv[2] == NULL || argv[3] == NULL || argv[4] == NULL ||
@@ -205,13 +193,22 @@ int main(int argc, char* argv[])
 	//return 0;
 }
 
-cudaError_t solveMatrixWithCuda(float* inverseA, float* vectorB, int dimension, int numOfThreads) {
+cudaError_t solveMatrixWithCuda(int numOfThreads) {
 	cudaError_t cudaStatus = cudaError_t::cudaErrorDeviceUninitilialized;
 	GpuTimer gpuTimer; // Struct for timing the GPU
 
-	float* dev_inverseA;
-	float* dev_vectorB;
-	float* dev_solution;
+	static double matrixA[MAX_N][MAX_N] = { 0 };
+
+	//from float to double
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			matrixA[i][j] = A_512[i][j];
+		}
+	}
+
+	InverseOfMatrix(matrixA, N);
+	
+	double *dev_inverseA, *dev_vectorB, *dev_solution = nullptr;
 
 	// Choose which GPU to run on, change this on a multi-GPU system.
 	cudaStatus = cudaSetDevice(0);
@@ -221,44 +218,55 @@ cudaError_t solveMatrixWithCuda(float* inverseA, float* vectorB, int dimension, 
 	}
 
 	// Allocate memory for the input matrix, then it's adjoint, then it's inverse
-	cudaStatus = cudaMallocManaged((void**)& dev_inverseA, dimension * dimension * sizeof(float));
+	cudaStatus = cudaMallocManaged((void**)& dev_inverseA, N * N * sizeof(double));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
 
-	cudaStatus = cudaMallocManaged((void**)& dev_vectorB, dimension * sizeof(float));
+	cudaStatus = cudaMallocManaged((void**)& dev_vectorB, N * sizeof(double));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
 
-	cudaStatus = cudaMallocManaged((void**)& dev_solution, dimension * sizeof(float));
+	cudaStatus = cudaMallocManaged((void**)& dev_solution, N * sizeof(double));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
 		goto Error;
 	}
 
 	// Copy over values from the input matrices to the CUDA memory
-	// TODO
+	for (int i = 0; i < N; i++) {
+		int k = 0;
+		for (int j = N; j < (2*N); j++) {
+			dev_inverseA[(i*N)+k] = matrixA[i][j];
+			k++;
+		}
+	}
+
+	for (int i = 0; i < N; i++) {
+		dev_vectorB[i] = b_512[i][0];
+	}
 
 	int numBlocks = ((numOfThreads + (MAX_NUMBER_THREADS - 1)) / MAX_NUMBER_THREADS);
 	int threadsPerBlock = ((numOfThreads + (numBlocks - 1)) / numBlocks);
-
 	/*************************************** Parrallel Part of Execution **********************************************/
 	gpuTimer.Start();
-	//solveMatrixKernel << <numBlocks, threadsPerBlock >> > (dev_inverseA, dev_vectorB, dev_solution, dimension, threadsPerBlock);
+	solveMatrixKernel << <numBlocks, threadsPerBlock >> > (dev_inverseA, dev_vectorB, dev_solution, N, threadsPerBlock);
+
+	solveMatrixKernel << <numBlocks, threadsPerBlock >> > (dev_inverseA, dev_vectorB, dev_solution, N, threadsPerBlock);
 	gpuTimer.Stop();
 	/******************************************************************************************************************/
 	printf("-- Number of Threads: %d -- Execution Time (ms): %g \n", numOfThreads, gpuTimer.Elapsed());
-	
+
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "solveMatrixWithCuda launch failed: %s\n", cudaGetErrorString(cudaStatus));
 		goto Error;
 	}
-	
+
 	// cudaDeviceSynchronize waits for the kernel to finish, and returns
 	// any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
@@ -267,9 +275,18 @@ cudaError_t solveMatrixWithCuda(float* inverseA, float* vectorB, int dimension, 
 		goto Error;
 	}
 
+	
+	// Copy over values from the input matrices to the CUDA memory
+	//for (int i = 0; i < N; i++) {
+	//	vecX[i][0] = dev_solution[i];
+	//}
+
+	//PrintMatrix(vecX, N, 1);
+
 Error:
 	cudaFree(dev_inverseA);
 	cudaFree(dev_vectorB);
 	cudaFree(dev_solution);
+
 	return cudaStatus;
 }
