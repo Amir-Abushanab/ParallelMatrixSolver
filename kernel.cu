@@ -169,7 +169,7 @@ cudaError_t solveMatrixWithCuda(int numOfThreads, int dimension) {
 		}
 	}
 
-	// As per assignment instructions, if the matrix has dimension n >= 512 we don't invert and multiply 
+	// As per assignment instructions, if the matrix has dimension n >= 512 we don't invert and instead multiply 
 	// the values directly with the solution matrix
 	if (dimension == 10 || dimension == 32) {
 		InverseOfMatrix(matrixA, dimension);
