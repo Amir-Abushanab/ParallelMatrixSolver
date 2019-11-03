@@ -89,6 +89,9 @@
     <ClInclude Include="b_32.h" />
     <ClInclude Include="b_512.h" />
     <ClInclude Include="gputimer.h" />
+    <ClInclude Include="X_1024.h" />
+    <ClInclude Include="X_32.h" />
+    <ClInclude Include="X_512.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
