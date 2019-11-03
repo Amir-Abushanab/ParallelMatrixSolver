@@ -34,12 +34,14 @@ void InverseOfMatrix(double matrix[][MAX_N], int dimension);
 
 __global__ void multiplyKernel(double* MatrixA, double* vecB, double* VecSol, int dimension, int numOfThreads)
 {
-	for (int i = 0; i <= dimension/numOfThreads; i++) {
+	for (int i = 0; i < ((dimension+(numOfThreads-1))/numOfThreads); i++) {
 		int j = (threadIdx.x + numOfThreads * i) + (blockIdx.x * numOfThreads);
 		int k = dimension * j;
-
-		for (int z = 0; z < dimension; z++) {
-			VecSol[j] += MatrixA[k + z] * vecB[z];
+		
+		if (j < dimension) {
+			for (int z = 0; z < dimension; z++) {
+				VecSol[j] += MatrixA[k + z] * vecB[z];
+			}
 		}
 	}
 }
